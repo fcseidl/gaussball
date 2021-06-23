@@ -1,0 +1,8 @@
+{
+    "python.linting.pylintArgs": [
+        "--unsafe-load-any-extension=y"
+    ],
+    "window.zoomLevel": 0,
+    "python.linting.enabled": false,
+    "python.pythonPath": "/opt/anaconda3/bin/python"
+}

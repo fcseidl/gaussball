@@ -16,17 +16,15 @@ import cv2
 
 dim = 2                     # TODO: what about different dimensions?
 Cov = np.array([
-    [2, -1],
-    [0, 5]
+    [1, 0],
+    [0, 1]
 ])          
 n_balls = 2
 
 
 #### specify colors ####
 
-color_background = np.array([255, 255, 255])      # white
-color_blur = np.array([255, 0, 0])
-color_comps = np.array([0, 0, 255])
+color_comps = np.array([1., 0., 0.])
 
 
 # simply plot density with principal components
@@ -40,33 +38,37 @@ scale = np.sqrt(vals.max()) * 4 / np.mean(asp)
 
 def pixel2plane(u, v):
     x = u - asp[0] / 2
-    y = v - asp[1] / 2
+    y = asp[1] / 2 - v
     x *= scale
     y *= scale
     return x, y
 
 def plane2pixel(x, y):
     u = x / scale
-    v = y / scale
+    v = -y / scale
     u += asp[0] / 2
     v += asp[1] / 2
-    return u, v
+    return int(u), int(v)
 
 # background is gaussian blur
 idx = np.indices(asp)
 x, y = pixel2plane(idx[0], idx[1])
 pts = np.dstack((x, y))
 density = multivariate_normal.pdf(pts, cov=Cov)
-#img = (1 - density / np.max(density))
 greyscale = (1 - density / np.max(density))
-img = np.empty((asp[0], asp[1], 3))
+# this is a hack to get an rgb image
+background = np.empty((asp[0], asp[1], 3))
 for c in range(3):
-    img[:, :, c] = greyscale
+    background[:, :, c] = greyscale
 
 # overlay principal components
 origin = plane2pixel(0, 0)
 cmp0 = plane2pixel(pcmps[0, 0], pcmps[0, 1])
 cmp1 = plane2pixel(pcmps[1, 0], pcmps[1, 1])
+
+img = background.copy()
+cv2.line(img, origin, cmp0, color_comps)
+cv2.line(img, origin, cmp1, color_comps)
 
 cv2.imshow('image', img)
 cv2.waitKey()

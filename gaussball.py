@@ -17,13 +17,13 @@ import cv2
 
 dim = 2                     # TODO: what about different dimensions?
 Cov = np.array([
-    [1, 0],
-    [0, 5]
+    [6, 0],
+    [0.2, 0.8]
 ])          
-n_balls = 2
+n_balls = 3
 
 # empirically estimate uncovered mass
-def cost(soln, n_samp=100000) -> float:
+def cost(soln, n_samp=1000) -> float:
     centers = soln.reshape(-1, dim)
     x = multivariate_normal.rvs(cov=Cov, size=n_samp)
     excluded = np.ones(n_samp)
@@ -88,7 +88,36 @@ class Solver(Annealer):
 
     _show_every = 50
 
-    def __init__(self, init_state) -> None:
+    # spherical gaussian nudges
+    def _spherical_noise(self) -> np.ndarray:
+        return np.random.randn(*(self.state.shape))
+    
+    # gaussian nudges with same covariance as underlying blur
+    def _shaped_noise(self) -> np.ndarray:
+        return multivariate_normal.rvs(cov=Cov, size=n_balls)
+    
+    # nudge all balls towards the center
+    def _inward_pull(self) -> np.ndarray:
+        return -self.state
+    
+    # balls magnetically repel one another
+    def _ball_repulsion(self) -> np.ndarray:
+        result = np.empty_like(self.state)
+        for b in range(n_balls):
+            displacements = self.state[b] - self.state
+            dists = linalg.norm(displacements, axis=1).reshape(n_balls, 1)
+            dists += 1e-7                   # hacky laplace smoothing to avoid zero divisors
+            result[b] = (displacements / (dists ** (4*dim))).sum()     # large unphysical exponent seems to work best
+        return result
+
+    def __init__(self, init_state, mover_coefs) -> None:
+        self._movers = {
+            'spherical noise':  self._spherical_noise,
+            'shaped noise':     self._shaped_noise, 
+            'inward pull':      self._inward_pull,
+            'ball repulsion':   self._ball_repulsion
+        }
+        self._mover_coefs = mover_coefs
         self._n_steps = 0
         self._min = np.infty
         self._argmin = None
@@ -96,7 +125,8 @@ class Solver(Annealer):
         super(Solver, self).__init__(init_state)
 
     def move(self) -> None:
-        self.state += 2e-2 * np.random.randn(*(self.state.shape)) - 5e-4 * self.state     # TODO: magic numbers
+        for key in self._mover_coefs.keys():
+            self.state += self._mover_coefs[key] * self._movers[key]()
 
     def energy(self) -> float:
         c = cost(self.state)
@@ -122,9 +152,17 @@ class Solver(Annealer):
 
 x0 = multivariate_normal.rvs(cov=Cov, size=n_balls)
 x0 = np.atleast_2d(x0)
-solver = Solver(init_state=x0)
+
+coefs = {
+    #'spherical noise':  1e-2,
+    'shaped noise':     1e-2,
+    'inward pull':      1e-4,
+    'ball repulsion':   1e-4
+}
+
+solver = Solver(init_state=x0, mover_coefs=coefs)
 centers, c = solver.anneal()
-print('Best solution:\n', centers)
+print('\nBest solution:\n', centers)
 print('Cost:', c)
 
 cv2.destroyAllWindows()
